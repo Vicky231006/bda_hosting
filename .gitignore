@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Build artifacts
+dist/
+build/
+.vscode/
+
+# Large Datasets (generated locally)
+backend/data/
+*.parquet
+*.csv
+
+# OS metadata
+.DS_Store
+Thumbs.db
