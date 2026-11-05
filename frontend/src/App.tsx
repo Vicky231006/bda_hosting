@@ -12,14 +12,20 @@ interface PredictionResponse {
   risk_level: 'High' | 'Medium' | 'Low';
   recommended_action: string;
   timeline: TimelinePoint[];
+  model_type?: string;
+  dataset_info?: string;
+  roc_auc?: number;
+  c_index?: number;
 }
 
 export default function App() {
   const [formData, setFormData] = useState({
-    unit_price: 120,
+    unit_price: 15,
     discount_rate: 0.20,
     shipping_distance_km: 450,
-    order_basket_size: 3,
+    order_basket_size: 5,
+    quantity: 1,
+    customer_prior_orders: 12,
     is_bracketed: 1,
     cust_hist_return_rate: 0.35,
     category: 'Footwear'
@@ -31,7 +37,8 @@ export default function App() {
   const handlePredict = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/predict', {
+      const apiUrl = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8001/predict';
+      const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
@@ -44,10 +51,11 @@ export default function App() {
       const data = await res.json();
       
       // Fallback normalization in case backend sends array or scalar formats
+      const unbox = (val: any) => Array.isArray(val) ? val[0] : val;
       const normalizedTimeline: TimelinePoint[] = Array.isArray(data.timeline) 
         ? data.timeline.map((item: any) => ({
-            day: item.day,
-            rate: Number(item.rate) || 0
+            day: String(unbox(item.day)),
+            rate: Number(unbox(item.rate)) || 0
           }))
         : [
             { day: 'Day 3', rate: 15 },
@@ -58,10 +66,14 @@ export default function App() {
           ];
 
       setResult({
-        return_risk_percentage: Number(data.return_risk_percentage) || 50,
-        risk_level: data.risk_level || 'Medium',
-        recommended_action: data.recommended_action || 'Standard dispatch policy.',
-        timeline: normalizedTimeline
+        return_risk_percentage: Number(unbox(data.return_risk_percentage)) || 5.0,
+        risk_level: (unbox(data.risk_level) || 'Medium') as 'High' | 'Medium' | 'Low',
+        recommended_action: unbox(data.recommended_action) || 'Standard dispatch policy.',
+        timeline: normalizedTimeline,
+        model_type: unbox(data.model_type),
+        dataset_info: unbox(data.dataset_info),
+        roc_auc: unbox(data.roc_auc),
+        c_index: unbox(data.c_index)
       });
     } catch (err) {
       console.error("Fetch/Data error:", err);
@@ -94,8 +106,9 @@ export default function App() {
             Pre-Dispatch Reverse Logistics Hazard & Risk Mitigation Dashboard (R + XGBoost)
           </p>
         </div>
-        <span className="text-xs px-3 py-1 bg-emerald-950 border border-emerald-800 text-emerald-300 rounded-full font-mono">
-          Model: R Plumber v1.2
+        <span className="text-xs px-3 py-1 bg-emerald-950 border border-emerald-800 text-emerald-300 rounded-full font-mono flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          {result?.model_type ? `model: ${result.model_type}` : 'model: fashion_bda_engine'}
         </span>
       </header>
 
@@ -165,6 +178,29 @@ export default function App() {
               </div>
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-slate-300 mb-1">Item Quantity</label>
+                <input
+                  type="number"
+                  min="1"
+                  className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-slate-200 outline-none"
+                  value={formData.quantity}
+                  onChange={e => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 mb-1">Customer Prior Orders</label>
+                <input
+                  type="number"
+                  min="0"
+                  className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-slate-200 outline-none"
+                  value={formData.customer_prior_orders}
+                  onChange={e => setFormData({ ...formData, customer_prior_orders: parseInt(e.target.value) || 0 })}
+                />
+              </div>
+            </div>
+
             <div>
               <label className="block text-slate-300 mb-1">Customer Historical Return Rate</label>
               <input
@@ -211,6 +247,21 @@ export default function App() {
             <div className="space-y-6">
               {/* Score Card */}
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                <div className="flex flex-wrap items-center gap-2 mb-4 pb-3 border-b border-slate-800/80 text-[11px] font-mono text-slate-400">
+                  <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-800 text-emerald-300 font-semibold">
+                    type: {result.model_type || 'real_world_trained'}
+                  </span>
+                  {result.dataset_info && (
+                    <span className="text-slate-400">
+                      dataset: {result.dataset_info}
+                    </span>
+                  )}
+                  {result.roc_auc && (
+                    <span className="text-emerald-400 ml-auto">
+                      ROC-AUC: {result.roc_auc} · C-Index: {result.c_index}
+                    </span>
+                  )}
+                </div>
                 <div className="flex justify-between items-start">
                   <div>
                     <h3 className="text-xs uppercase font-semibold text-slate-400">Pre-Dispatch Return Risk</h3>
